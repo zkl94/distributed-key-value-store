@@ -14,12 +14,14 @@
 #include "Member.h"
 #include "EmulNet.h"
 #include "Queue.h"
+#include <map>
 
 /**
  * Macros
  */
-#define TREMOVE 20
+#define TREMOVE 10
 #define TFAIL 5
+#define BROADCAST_INTERVAL 4
 
 /*
  * Note: You can change/add any functions in MP1Node.{h,cpp}
@@ -29,9 +31,10 @@
  * Message Types
  */
 enum MsgTypes{
-    JOINREQ,
-    JOINREP,
-    DUMMYLASTMSGTYPE
+    JOINREQ = 0,
+    JOINREP = 1,
+    MEMBERLIST = 2,
+    DUMMYLASTMSGTYPE = 3
 };
 
 /**
@@ -55,8 +58,10 @@ private:
 	Params *par;
 	Member *memberNode;
 	char NULLADDR[6];
+	int broadcast;
 
 public:
+	std::map<int, int> *tobedeleted;
 	MP1Node(Member *, Params *, EmulNet *, Log *, Address *);
 	Member * getMemberNode() {
 		return memberNode;
@@ -76,6 +81,15 @@ public:
 	void initMemberListTable(Member *memberNode);
 	void printAddress(Address *addr);
 	virtual ~MP1Node();
+
+	void handleJOINREQ(void *env, char *data, int size);
+	void handleJOINREP(void *env, char *data, int size);
+	void handleHEARTBEAT(void *env, char *data, int size);
+	void handleMEMBERLIST(void *env, char *data, int size);
+
+	void logNodeAddWrapper(Member *memberNode, int id, short port);
+	void updateEntry(Member *memberNode, int id, short port, long heartbeat);
+	void updateToBeDeletedMap();
 };
 
 #endif /* _MP1NODE_H_ */
