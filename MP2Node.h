@@ -19,6 +19,21 @@
 #include "Message.h"
 #include "Queue.h"
 
+class Bundle {
+public:
+	int responses;
+	MessageType t;
+	string key;
+	string value;
+
+	Bundle(int responses, MessageType t, string key, string value) {
+		this->responses = responses;
+		this->t = t;
+		this->key = key;
+		this->value = value;
+	}
+};
+
 /**
  * CLASS NAME: MP2Node
  *
@@ -38,6 +53,7 @@ private:
 	// Ring
 	vector<Node> ring;
 	// Hash Table
+	// for key-value of key-value store
 	HashTable * ht;
 	// Member representing this member
 	Member *memberNode;
@@ -47,6 +63,12 @@ private:
 	EmulNet * emulNet;
 	// Object of Log
 	Log * log;
+	// new ring
+	vector<Node> newRing;
+	// for tracking transactions
+	int lowestTransID;
+	// record the number of replies of a transaction
+	map<int, Bundle*> transID2Bundle; // don't have to initialize
 
 public:
 	MP2Node(Member *memberNode, Params *par, EmulNet *emulNet, Log *log, Address *addressOfMember);
@@ -80,13 +102,19 @@ public:
 	vector<Node> findNodes(string key);
 
 	// server
-	bool createKeyValue(string key, string value, ReplicaType replica);
-	string readKey(string key);
-	bool updateKeyValue(string key, string value, ReplicaType replica);
-	bool deletekey(string key);
+	bool createKeyValue(Address fromAddr, string key, string value, ReplicaType replica, int transID, MessageType t);
+	string readKey(Address fromAddr, string key, int transID, MessageType t);
+	bool updateKeyValue(Address fromAddr, string key, string value, ReplicaType replica, int transID, MessageType t);
+	bool deletekey(Address fromAddr, string key, int transID, MessageType t);
+	
+	void handleReply(int transID);
+	void handleReadReply(string value, int transID);
 
 	// stabilization protocol - handle multiple failures
 	void stabilizationProtocol();
+
+	void clientReadDelete(string key, MessageType t);
+	void clientCreateUpdate(string key, string value, MessageType t);
 
 	~MP2Node();
 };

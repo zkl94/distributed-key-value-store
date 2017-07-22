@@ -259,7 +259,7 @@ bool MP1Node::recvCallBack(void *env, char *data, int size) {
     return false;
 }
 
-#define DEBUG_JOINREQ
+// #define DEBUG_JOINREQ
 
 void MP1Node::handleJOINREQ(void *env, char *data, int size) {
     #ifdef DEBUG_JOINREQ
@@ -354,7 +354,7 @@ void MP1Node::updateEntry(Member *memberNode, int id, short port, long heartbeat
     auto alreadyintobedeletedlist = this->tobedeleted->count(id);
     if (alreadyintobedeletedlist != 0) {
         // already in to be deleted map
-        cout << "already in tobedeleted map, ignore the update" <<endl;
+        // cout << "already in tobedeleted map, ignore the update" <<endl;
         return;
     }
 
@@ -365,7 +365,7 @@ void MP1Node::updateEntry(Member *memberNode, int id, short port, long heartbeat
             found = true;
             // the incoming heartbeat is more latest
             if (memberListEntry.getheartbeat() < heartbeat) {
-                cout << "doing heartbeat update for " << id <<endl;
+                // cout << "doing heartbeat update for " << id <<endl;
                 memberListEntry.setheartbeat(heartbeat);
                 memberListEntry.settimestamp(par->getcurrtime());
             }
@@ -381,7 +381,7 @@ void MP1Node::updateEntry(Member *memberNode, int id, short port, long heartbeat
     }
 }
 
-#define DEBUG_MEMBERLIST
+// #define DEBUG_MEMBERLIST
 
 void MP1Node::handleMEMBERLIST(void *env, char *data, int size) {
     #ifdef DEBUG_MEMBERLIST
@@ -509,7 +509,7 @@ void MP1Node::nodeLoopOps() {
             string _address = to_string(id) + ":" + to_string(port);
             address = Address(_address);
 
-            cout << "found invalid entry with id " << id <<endl;
+            // cout << "found invalid entry with id " << id <<endl;
 
             if (this->tobedeleted->count(id) == 0) {
                 // may have already added to tobedeleted map
