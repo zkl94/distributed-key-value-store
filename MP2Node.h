@@ -68,7 +68,7 @@ private:
 	// Object of Log
 	Log * log;
 	// new ring
-	vector<Node> newRing;
+	vector<Node> new_ring;
 	// for tracking transactions
 	int lowestTransID;
 	// record the number of replies of a transaction
@@ -104,6 +104,7 @@ public:
 
 	// find the addresses of nodes that are responsible for a key
 	vector<Node> findNodes(string key);
+	vector<Node> findNodes2(string key, vector<Node> ring);
 
 	// server
 	bool createKeyValue(Address fromAddr, string key, string value, ReplicaType replica, int transID, MessageType t);

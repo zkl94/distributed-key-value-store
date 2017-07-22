@@ -56,17 +56,23 @@ void MP2Node::updateRing() {
 	/*
 	 * Step 3: Run the stabilization protocol IF REQUIRED
 	 */
-	// Run stabilization protocol if the hash table size is greater than zero and if there has been a changed in the ring
+	// Run stabilization protocol if the hash table size is greater than zero and if there has been changes in the ring
 
 	// if stabilization protocol needs to be run, cache the list (now the old list and new list are both present)
 	// and then let the stabilization protocol do the work
 
 	// for testing purpose
-	this->ring = curMemList;
+	// this->ring = curMemList;
+
+	// @TODO: need to be taken care of
+	if (this->ring.size() == 0) {
+		this->ring = curMemList;
+		return;
+	}
 
 	// first compare the size
 	if (this->ring.size() != curMemList.size()) {
-		this->newRing = curMemList;
+		this->new_ring = curMemList;
 		this->stabilizationProtocol();
 		return;
 	}
@@ -75,7 +81,7 @@ void MP2Node::updateRing() {
 	for (int i = 0; i < this->ring.size(); ++i)
 	{
 		if (this->ring[i].nodeHashCode != curMemList[i].nodeHashCode) {
-			this->newRing = curMemList;
+			this->new_ring = curMemList;
 			this->stabilizationProtocol();
 			return;
 		}
@@ -468,11 +474,11 @@ void MP2Node::checkMessages() {
             string key = it->second->key;
             string value = it->second->value;
 
-            static char s[1024];
-			sprintf(s, "successful response %d\n", it->second->success_responses);
-			log->LOG(&memberNode->addr, s);
-			sprintf(s, "failure response %d\n", it->second->failure_responses);
-			log->LOG(&memberNode->addr, s);
+   			// static char s[1024];
+			// sprintf(s, "successful response %d\n", it->second->success_responses);
+			// log->LOG(&memberNode->addr, s);
+			// sprintf(s, "failure response %d\n", it->second->failure_responses);
+			// log->LOG(&memberNode->addr, s);
 
             // 2 (out of 3) is quorum
             if (it->second->success_responses >= 2) {
@@ -542,6 +548,32 @@ vector<Node> MP2Node::findNodes(string key) {
 	return addr_vec;
 }
 
+vector<Node> MP2Node::findNodes2(string key, vector<Node> ring) {
+	size_t pos = hashFunction(key);
+	vector<Node> addr_vec;
+	if (ring.size() >= 3) {
+		// if pos <= min || pos > max, the leader is the min
+		if (pos <= ring.at(0).getHashCode() || pos > ring.at(ring.size()-1).getHashCode()) {
+			addr_vec.emplace_back(ring.at(0));
+			addr_vec.emplace_back(ring.at(1));
+			addr_vec.emplace_back(ring.at(2));
+		}
+		else {
+			// go through the ring until pos <= node
+			for (int i=1; i<ring.size(); i++){
+				Node addr = ring.at(i);
+				if (pos <= addr.getHashCode()) {
+					addr_vec.emplace_back(addr);
+					addr_vec.emplace_back(ring.at((i+1)%ring.size()));
+					addr_vec.emplace_back(ring.at((i+2)%ring.size()));
+					break;
+				}
+			}
+		}
+	}
+	return addr_vec;
+}
+
 /**
  * FUNCTION NAME: recvLoop
  *
@@ -567,6 +599,18 @@ int MP2Node::enqueueWrapper(void *env, char *buff, int size) {
 }
 
 
+bool vector_diff(vector<Node> old_nodes, vector<Node> new_nodes) {
+    for (Node &new_node : new_nodes) {
+    	for (Node &old_node : old_nodes) {
+    		if (new_node.nodeHashCode == old_node.nodeHashCode) {
+    			return true;
+    		}
+    	}
+    }
+    return false;
+}
+
+
 /**
  * FUNCTION NAME: stabilizationProtocol
  *
@@ -580,4 +624,38 @@ void MP2Node::stabilizationProtocol() {
 	/*
 	 * Implement this
 	 */
+
+	// for every key in the hashtable
+	// 		if vector<Node> of old hashtable is different from the new vector<Node>
+	// 			find out the difference (new vector<Node> - old vector<Node>)
+	// 			act as coordinator and send create request to all three of the new nodes 
+
+
+	std::map<string, string>::iterator it = this->ht->hashTable.begin();
+	std::map<string, string> difference_map;
+    
+    while(it != this->ht->hashTable.end()) {
+        string key = it->first;
+        string value = it->second;
+        vector<Node> old_nodes = findNodes2(key, this->ring);
+        vector<Node> new_nodes = findNodes2(key, this->new_ring);
+
+        if (vector_diff(old_nodes, new_nodes)) {
+        	// if there is difference for this key, create new replicas
+        	difference_map.emplace(std::make_pair(key, value));
+        } 
+        ++it;
+    }
+
+    this->ring = this->new_ring;
+
+    std::map<string, string>::iterator it2 = difference_map.begin();
+
+    while(it2 != difference_map.end()) {
+    	string key = it2->first;
+        string value = it2->second;
+
+        clientCreate(key, value);
+        it2++;
+    }
 }
