@@ -26,6 +26,7 @@ public:
 	MessageType t;
 	string key;
 	string value;
+	int iteration;
 
 	Bundle(MessageType t, string key, string value) {
 		this->success_responses = 0;
@@ -33,6 +34,7 @@ public:
 		this->t = t;
 		this->key = key;
 		this->value = value;
+		this->iteration = 0; // the times being read by checkMessages
 	}
 };
 
@@ -110,7 +112,7 @@ public:
 	bool deletekey(Address fromAddr, string key, int transID, MessageType t);
 	
 	void handleReply(int transID, bool success);
-	void handleReadReply(string value, int transID, bool success);
+	void handleReadReply(string value, int transID);
 
 	// stabilization protocol - handle multiple failures
 	void stabilizationProtocol();

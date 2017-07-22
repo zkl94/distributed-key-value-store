@@ -262,8 +262,8 @@ void MP2Node::handleReply(int transID, bool success) {
 	}
 }
 
-void MP2Node::handleReadReply(string value, int transID, bool success) {
-	if (success) {
+void MP2Node::handleReadReply(string value, int transID) {
+	if (!value.empty()) {
 		transID2Bundle[transID]->success_responses++;
 		// @TODO: here we are assuming all responses are latest
 		transID2Bundle[transID]->value = value;
@@ -312,10 +312,11 @@ string MP2Node::readKey(Address fromAddr, string key, int transID, MessageType t
 	if (!result.empty()) {
 		// success
 		log->logReadSuccess(&(this->memberNode->addr), false, transID, key, result);
-		message = new Message(transID, this->memberNode->addr, READREPLY, true);
+		// determine success or failure by whether result is empty or not
+		message = new Message(transID, this->memberNode->addr, result);
 	} else {
 		log->logReadFail(&(this->memberNode->addr), false, transID, key);
-		message = new Message(transID, this->memberNode->addr, READREPLY, false);
+		message = new Message(transID, this->memberNode->addr, result);
 	}
 
 	string _string = message->toString();
@@ -445,26 +446,33 @@ void MP2Node::checkMessages() {
 				handleReply(transID, success);
 				break;
 			case READREPLY:
-				// handleReadReply(transID);
-				handleReadReply(value, transID, success);
+				handleReadReply(value, transID);
 				break;
 		}
 	}
 
-	// @TODO: how long do we have to wait for replies???
+	// @TODO: how long do we have to wait for replies??? 10 times
 	/*
 	 * This function should also ensure all READ and UPDATE operation
 	 * get QUORUM replies
 	 */
 
+	#define PROPOGATE_ITERATION_LIMIT 5
+
 	std::map<int, Bundle*>::iterator it = this->transID2Bundle.begin();
     
     while(it != this->transID2Bundle.end()) {
-        if ((it->second->success_responses + it->second->failure_responses) == 3) {
+        if (((it->second->success_responses + it->second->failure_responses) == 3) || (it->second->iteration >= PROPOGATE_ITERATION_LIMIT)) {
             int transID = it->first;
             MessageType t = it->second->t;
             string key = it->second->key;
             string value = it->second->value;
+
+            static char s[1024];
+			sprintf(s, "successful response %d\n", it->second->success_responses);
+			log->LOG(&memberNode->addr, s);
+			sprintf(s, "failure response %d\n", it->second->failure_responses);
+			log->LOG(&memberNode->addr, s);
 
             // 2 (out of 3) is quorum
             if (it->second->success_responses >= 2) {
@@ -496,6 +504,7 @@ void MP2Node::checkMessages() {
 			delete it->second;
             it = this->transID2Bundle.erase(it);
         } else {
+        	it->second->iteration++;
             ++it;
         }
     }
