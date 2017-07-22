@@ -165,6 +165,7 @@ void MP2Node::clientCreateUpdate(string key, string value, MessageType t) {
 	int transID = this->lowestTransID++;
 	this->transID2Bundle.emplace(transID, new Bundle(0, t, key, value));
 
+	// one transaction involves three servers
 	Message *primary_message = new Message(transID, this->memberNode->addr, t, key, value, PRIMARY);
 	Message *secondary_message = new Message(transID, this->memberNode->addr, t, key, value, SECONDARY);
 	Message *tertiary_message = new Message(transID, this->memberNode->addr, t, key, value, TERTIARY);
@@ -173,6 +174,7 @@ void MP2Node::clientCreateUpdate(string key, string value, MessageType t) {
 	// size_t position = this->hashFunction(key);
 
 	vector<Node> v = findNodes(key);
+	// cout << "there are " << v.size() << " nodes for this key" << endl;
 
 	// Address _toAddr = this->ring[position].nodeAddress;
 	string primary_string = primary_message->toString();
@@ -206,6 +208,7 @@ void MP2Node::clientCreateUpdate(string key, string value, MessageType t) {
 // called by application (client)
 // the coordinator is also a node, chosen randomly by the client
 void MP2Node::clientCreate(string key, string value) {
+	// cout << "client create called" << endl;
 	this->clientCreateUpdate(key, value, CREATE);
 }
 
@@ -275,7 +278,7 @@ bool MP2Node::createKeyValue(Address fromAddr, string key, string value, Replica
 	log->logCreateSuccess(&(this->memberNode->addr), false, transID, key, value);
 
 	// reply
-	Message *message = new Message(transID, fromAddr, t, true);
+	Message *message = new Message(transID, fromAddr, REPLY, true);
 	string _string = message->toString();
 	emulNet->ENsend(&(this->memberNode->addr), &fromAddr, (char *)_string.c_str(), _string.size());
 
@@ -406,6 +409,7 @@ void MP2Node::checkMessages() {
 		// MessageType {CREATE, READ, UPDATE, DELETE, REPLY, READREPLY};
 		switch(msg->type) {
 			case CREATE:
+				// cout << "received a CREATE message" << endl;
 				createKeyValue(fromAddr, key, value, replica, transID, t);
 				break;
 			case READ:
@@ -437,7 +441,7 @@ void MP2Node::checkMessages() {
     
     while(it != this->transID2Bundle.end()) {
     	// 2 (out of 3) is quorum
-        if (it->second->responses >= 2) {
+        if (it->second->responses >= 3) {
             int transID = it->first;
             MessageType t = it->second->t;
             string key = it->second->key;
