@@ -130,7 +130,7 @@ size_t MP2Node::hashFunction(string key) {
 void MP2Node::clientReadDelete(string key, MessageType t) {
 	// construct message
 	int transID = this->lowestTransID++;
-	this->transID2Bundle.emplace(transID, new Bundle(0, t, key, ""));
+	this->transID2Bundle.emplace(transID, new Bundle(t, key, ""));
 
 	Message *primary_message = new Message(transID, this->memberNode->addr, t, key);
 	Message *secondary_message = new Message(transID, this->memberNode->addr, t, key);
@@ -140,6 +140,7 @@ void MP2Node::clientReadDelete(string key, MessageType t) {
 	// size_t position = this->hashFunction(key);
 
 	vector<Node> v = findNodes(key);
+	// cout << "there are " << v.size() << " nodes for this key" << endl;
 
 	// Address _toAddr = this->ring[position].nodeAddress;
 	string primary_string = primary_message->toString();
@@ -163,7 +164,7 @@ void MP2Node::clientReadDelete(string key, MessageType t) {
 void MP2Node::clientCreateUpdate(string key, string value, MessageType t) {
 	// construct message
 	int transID = this->lowestTransID++;
-	this->transID2Bundle.emplace(transID, new Bundle(0, t, key, value));
+	this->transID2Bundle.emplace(transID, new Bundle(t, key, value));
 
 	// one transaction involves three servers
 	Message *primary_message = new Message(transID, this->memberNode->addr, t, key, value, PRIMARY);
@@ -253,13 +254,22 @@ void MP2Node::clientDelete(string key){
 }
 
 
-void MP2Node::handleReply(int transID) {
-	transID2Bundle[transID]->responses++;
+void MP2Node::handleReply(int transID, bool success) {
+	if (success) {
+		transID2Bundle[transID]->success_responses++;
+	} else {
+		transID2Bundle[transID]->failure_responses++;
+	}
 }
 
-void MP2Node::handleReadReply(string value, int transID) {
-	transID2Bundle[transID]->responses++;
-	transID2Bundle[transID]->value = value;
+void MP2Node::handleReadReply(string value, int transID, bool success) {
+	if (success) {
+		transID2Bundle[transID]->success_responses++;
+		// @TODO: here we are assuming all responses are latest
+		transID2Bundle[transID]->value = value;
+	} else {
+		transID2Bundle[transID]->failure_responses++;
+	}
 }
 
 /**
@@ -278,9 +288,11 @@ bool MP2Node::createKeyValue(Address fromAddr, string key, string value, Replica
 	log->logCreateSuccess(&(this->memberNode->addr), false, transID, key, value);
 
 	// reply
-	Message *message = new Message(transID, fromAddr, REPLY, true);
+	Message *message = new Message(transID, this->memberNode->addr, REPLY, true);
 	string _string = message->toString();
 	emulNet->ENsend(&(this->memberNode->addr), &fromAddr, (char *)_string.c_str(), _string.size());
+
+	delete message;
 
 	return true;
 }
@@ -300,14 +312,16 @@ string MP2Node::readKey(Address fromAddr, string key, int transID, MessageType t
 	if (!result.empty()) {
 		// success
 		log->logReadSuccess(&(this->memberNode->addr), false, transID, key, result);
-		message = new Message(transID, fromAddr, t, true);
+		message = new Message(transID, this->memberNode->addr, READREPLY, true);
 	} else {
 		log->logReadFail(&(this->memberNode->addr), false, transID, key);
-		message = new Message(transID, fromAddr, t, false);
+		message = new Message(transID, this->memberNode->addr, READREPLY, false);
 	}
 
 	string _string = message->toString();
 	emulNet->ENsend(&(this->memberNode->addr), &fromAddr, (char *)_string.c_str(), _string.size());
+
+	delete message;
 
 	return result;
 }
@@ -326,14 +340,16 @@ bool MP2Node::updateKeyValue(Address fromAddr, string key, string value, Replica
 	Message *message;
 	if (success) {
 		log->logUpdateSuccess(&(this->memberNode->addr), false, transID, key, value);
-		message = new Message(transID, fromAddr, t, true);
+		message = new Message(transID, this->memberNode->addr, REPLY, true);
 	} else {
 		log->logUpdateFail(&(this->memberNode->addr), false, transID, key, value);
-		message = new Message(transID, fromAddr, t, false);
+		message = new Message(transID, this->memberNode->addr, REPLY, false);
 	}
 
 	string _string = message->toString();
 	emulNet->ENsend(&(this->memberNode->addr), &fromAddr, (char *)_string.c_str(), _string.size());
+
+	delete message;
 
 	return success;
 }
@@ -352,14 +368,16 @@ bool MP2Node::deletekey(Address fromAddr, string key, int transID, MessageType t
 	Message *message;
 	if (success) {
 		log->logDeleteSuccess(&(this->memberNode->addr), false, transID, key);
-		message = new Message(transID, fromAddr, t, true);
+		message = new Message(transID, this->memberNode->addr, REPLY, true);
 	} else {
 		log->logDeleteFail(&(this->memberNode->addr), false, transID, key);
-		message = new Message(transID, fromAddr, t, false);
+		message = new Message(transID, this->memberNode->addr, REPLY, false);
 	}
 
 	string _string = message->toString();
 	emulNet->ENsend(&(this->memberNode->addr), &fromAddr, (char *)_string.c_str(), _string.size());
+
+	delete message;
 
 	return success;
 }
@@ -405,6 +423,7 @@ void MP2Node::checkMessages() {
 		string value = msg->value;
 		Address fromAddr = msg->fromAddr;
 		MessageType t = msg->type;
+		bool success = msg->success;
 
 		// MessageType {CREATE, READ, UPDATE, DELETE, REPLY, READREPLY};
 		switch(msg->type) {
@@ -419,14 +438,15 @@ void MP2Node::checkMessages() {
 				updateKeyValue(fromAddr, key, value, replica, transID, t);
 				break;
 			case DELETE:
+				cout << "received a DELETE message" << endl;
 				deletekey(fromAddr, key, transID, t);
 				break;
 			case REPLY:
-				handleReply(transID);
+				handleReply(transID, success);
 				break;
 			case READREPLY:
 				// handleReadReply(transID);
-				handleReadReply(value, transID);
+				handleReadReply(value, transID, success);
 				break;
 		}
 	}
@@ -440,24 +460,38 @@ void MP2Node::checkMessages() {
 	std::map<int, Bundle*>::iterator it = this->transID2Bundle.begin();
     
     while(it != this->transID2Bundle.end()) {
-    	// 2 (out of 3) is quorum
-        if (it->second->responses >= 3) {
+        if ((it->second->success_responses + it->second->failure_responses) == 3) {
             int transID = it->first;
             MessageType t = it->second->t;
             string key = it->second->key;
             string value = it->second->value;
 
-			if (t == READ) {
-				// read
-				// @TODO: need to aggregate read return values, can't just use handleReply
-				log->logReadSuccess(&(this->memberNode->addr), true, transID, key, value);
-			} else if (t == UPDATE) {
-				log->logUpdateSuccess(&(this->memberNode->addr), true, transID, key, value);
-			} else if (t == CREATE) {
-				log->logCreateSuccess(&(this->memberNode->addr), true, transID, key, value);
-			} else if (t == DELETE) {
-				log->logDeleteSuccess(&(this->memberNode->addr), true, transID, key);
-			}
+            // 2 (out of 3) is quorum
+            if (it->second->success_responses >= 2) {
+            	if (t == READ) {
+					// read
+					// @TODO: need to aggregate read return values, can't just use handleReply
+					log->logReadSuccess(&(this->memberNode->addr), true, transID, key, value);
+				} else if (t == UPDATE) {
+					log->logUpdateSuccess(&(this->memberNode->addr), true, transID, key, value);
+				} else if (t == CREATE) {
+					log->logCreateSuccess(&(this->memberNode->addr), true, transID, key, value);
+				} else if (t == DELETE) {
+					log->logDeleteSuccess(&(this->memberNode->addr), true, transID, key);
+				}
+            } else {
+            	if (t == READ) {
+					// read
+					// @TODO: need to aggregate read return values, can't just use handleReply
+					log->logReadFail(&(this->memberNode->addr), true, transID, key);
+				} else if (t == UPDATE) {
+					log->logUpdateFail(&(this->memberNode->addr), true, transID, key, value);
+				} else if (t == CREATE) {
+					log->logCreateFail(&(this->memberNode->addr), true, transID, key, value);
+				} else if (t == DELETE) {
+					log->logDeleteFail(&(this->memberNode->addr), true, transID, key);
+				}
+            }
 
 			delete it->second;
             it = this->transID2Bundle.erase(it);

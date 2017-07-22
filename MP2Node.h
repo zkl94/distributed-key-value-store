@@ -21,13 +21,15 @@
 
 class Bundle {
 public:
-	int responses;
+	int success_responses;
+	int failure_responses;
 	MessageType t;
 	string key;
 	string value;
 
-	Bundle(int responses, MessageType t, string key, string value) {
-		this->responses = responses;
+	Bundle(MessageType t, string key, string value) {
+		this->success_responses = 0;
+		this->failure_responses = 0;
 		this->t = t;
 		this->key = key;
 		this->value = value;
@@ -107,8 +109,8 @@ public:
 	bool updateKeyValue(Address fromAddr, string key, string value, ReplicaType replica, int transID, MessageType t);
 	bool deletekey(Address fromAddr, string key, int transID, MessageType t);
 	
-	void handleReply(int transID);
-	void handleReadReply(string value, int transID);
+	void handleReply(int transID, bool success);
+	void handleReadReply(string value, int transID, bool success);
 
 	// stabilization protocol - handle multiple failures
 	void stabilizationProtocol();
